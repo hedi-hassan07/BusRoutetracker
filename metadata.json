@@ -1,0 +1,6 @@
+{
+  "name": "سیستەمی پاسی قوتابخانە",
+  "description": "ڕێکخستنی کورتترین ڕێگای پاس، چاودێری ڕاستەوخۆ لەسەر نەخشە، و ناردنی ئاگاداری ١ خولەک پێش گەیشتن بۆ دایک و باوکان.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
