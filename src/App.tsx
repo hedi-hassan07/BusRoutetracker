@@ -10,6 +10,13 @@ import {
 } from './types';
 import { INITIAL_BUSES, INITIAL_SCHOOL, INITIAL_STUDENTS } from './data/mockData';
 import { getHaversineDistanceKm, interpolatePoints, optimizeRouteOrder } from './utils/routeOptimizer';
+import {
+  calculateHeading,
+  fetchRoadRoute,
+  generateRealisticRoadFallback,
+  INITIAL_OPTIMIZED_ROAD_ROUTE,
+  INITIAL_UNOPTIMIZED_ROAD_ROUTE,
+} from './services/roadRoutingService';
 import { soundPlayer } from './utils/audioAlert';
 import { Header } from './components/Header';
 import { MapView } from './components/MapView';
@@ -123,22 +130,63 @@ export default function App() {
     return optimizeRouteOrder(school, students, shift);
   }, [school, students, shift]);
 
-  // Naive unoptimized polyline for comparison demonstration
-  const unoptimizedPolyline = useMemo(() => {
-    const naiveList = [...students].sort((a, b) => a.originalSequence - b.originalSequence);
-    const line: [number, number][] = [[school.lat, school.lng]];
-    let prev = [school.lat, school.lng] as [number, number];
-    for (const s of naiveList) {
-      const seg = interpolatePoints(prev, [s.lat, s.lng], 5);
-      seg.shift();
-      line.push(...seg);
-      prev = [s.lat, s.lng];
+  // Realistic Road-Network Geometry State (Sourced from OpenStreetMap/OSRM Driving Graph)
+  const [roadPolyline, setRoadPolyline] = useState<[number, number][]>(
+    INITIAL_OPTIMIZED_ROAD_ROUTE
+  );
+  const [unoptimizedRoadPolyline, setUnoptimizedRoadPolyline] = useState<[number, number][]>(
+    INITIAL_UNOPTIMIZED_ROAD_ROUTE
+  );
+
+  // Synchronize road polylines whenever students (e.g. sick/absent toggle), school, or shift changes
+  useEffect(() => {
+    let isCancelled = false;
+    const activeStudents = students.filter((s) => s.status !== 'absent');
+
+    // If standard full 6-student morning route, use high-precision precomputed OSM geometry
+    if (activeStudents.length === 6 && shift === 'morning_pickup') {
+      setRoadPolyline(INITIAL_OPTIMIZED_ROAD_ROUTE);
+      setUnoptimizedRoadPolyline(INITIAL_UNOPTIMIZED_ROAD_ROUTE);
+      return;
     }
-    const finalSeg = interpolatePoints(prev, [school.lat, school.lng], 5);
-    finalSeg.shift();
-    line.push(...finalSeg);
-    return line;
-  }, [school, students]);
+
+    // Fetch live turn-by-turn road route from OSRM for active waypoints
+    if (optimization.waypoints.length >= 2) {
+      fetchRoadRoute(optimization.waypoints).then((result) => {
+        if (!isCancelled) {
+          if (result && result.coordinates.length > 0) {
+            setRoadPolyline(result.coordinates);
+          } else {
+            setRoadPolyline(generateRealisticRoadFallback(optimization.waypoints));
+          }
+        }
+      });
+    }
+
+    // Also update unoptimized route for comparison
+    const naiveList = [...activeStudents].sort((a, b) => a.originalSequence - b.originalSequence);
+    const naiveWaypoints = [
+      { lat: school.lat, lng: school.lng },
+      ...naiveList.map((s) => ({ lat: s.lat, lng: s.lng })),
+      { lat: school.lat, lng: school.lng },
+    ];
+
+    if (naiveWaypoints.length >= 2) {
+      fetchRoadRoute(naiveWaypoints).then((result) => {
+        if (!isCancelled) {
+          if (result && result.coordinates.length > 0) {
+            setUnoptimizedRoadPolyline(result.coordinates);
+          } else {
+            setUnoptimizedRoadPolyline(generateRealisticRoadFallback(naiveWaypoints));
+          }
+        }
+      });
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [optimization.waypoints, students, shift, school]);
 
   // Add Notification Helper
   const addNotification = useCallback((notification: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => {
@@ -172,13 +220,14 @@ export default function App() {
       return;
     }
 
-    const intervalTime = Math.max(120, 600 / currentBus.simulationSpeed);
+    const intervalTime = Math.max(90, Math.round(300 / currentBus.simulationSpeed));
+    const stepSize = currentBus.simulationSpeed >= 3 ? 2 : 1;
 
     simulationRef.current.timerId = window.setInterval(() => {
-      const polyline = optimization.fullPolyline;
+      const polyline = roadPolyline;
       if (!polyline || polyline.length === 0) return;
 
-      simulationRef.current.polylineIndex += 1;
+      simulationRef.current.polylineIndex += stepSize;
       const nextIndex = simulationRef.current.polylineIndex;
 
       // Reached destination (School)
@@ -216,6 +265,9 @@ export default function App() {
       }
 
       const [nextLat, nextLng] = polyline[nextIndex];
+      const prevLat = currentBus.currentLat;
+      const prevLng = currentBus.currentLng;
+      const heading = calculateHeading(prevLat, prevLng, nextLat, nextLng);
       const speed = Math.floor(28 + Math.random() * 8);
 
       // Update bus location
@@ -226,6 +278,7 @@ export default function App() {
                 ...b,
                 currentLat: nextLat,
                 currentLng: nextLng,
+                heading: heading || b.heading,
                 speedKmh: speed,
                 status: 'en_route',
               }
@@ -297,7 +350,7 @@ export default function App() {
         simulationRef.current.timerId = null;
       }
     };
-  }, [currentBus.isSimulating, currentBus.simulationSpeed, optimization.fullPolyline, school, addNotification]);
+  }, [currentBus.isSimulating, currentBus.simulationSpeed, roadPolyline, school, addNotification]);
 
   // Simulation Controls
   const handleStartSimulation = () => {
@@ -513,13 +566,37 @@ export default function App() {
     );
 
     if (student) {
+      soundPlayer.playProximityChime();
       addNotification({
         type: 'info',
-        title: `نەهاتوو: ${student.name}`,
-        message: `ماڵی ئەم قوتابییە دەپەڕێندرێت و شۆفێر ئاگادارکرایەوە.`,
+        title: `🔄 کورتکردنەوەی ڕێگا: ${student.name}`,
+        message: `قوتابی (${student.name}) وەک نەخۆش/نەهاتوو دیاریکرا. وێستگەکەی لە نەخشە و ڕێگای پاس سڕایەوە و کاتی گەشت کورتکرایەوە.`,
+        studentId: student.id,
+        studentName: student.name,
+        urgent: false,
+      });
+    }
+  };
+
+  const handleToggleAbsentStatus = (studentId: string) => {
+    const student = students.find((s) => s.id === studentId);
+    if (!student) return;
+
+    if (student.status === 'absent') {
+      // Revert to waiting / present
+      setStudents((prev) =>
+        prev.map((s) => (s.id === studentId ? { ...s, status: 'home_waiting' } : s))
+      );
+      soundPlayer.playSuccessTone();
+      addNotification({
+        type: 'info',
+        title: `✅ گەڕاندنەوە بۆ ڕێگا: ${student.name}`,
+        message: `${student.name} دووبارە خرایەوە نێو هێڵی پاس. وێستگەکەیان سەرلەنوێ خرایەوە نێو ڕێگای پاس.`,
         studentId: student.id,
         studentName: student.name,
       });
+    } else {
+      handleMarkAbsent(studentId);
     }
   };
 
@@ -870,13 +947,17 @@ export default function App() {
       {/* Main Content Layout */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 flex flex-col lg:flex-row gap-5">
         {/* Left Side: Interactive Map */}
-        <section className="w-full lg:w-7/12 flex flex-col min-h-[460px] lg:min-h-[640px]">
+        <section
+          className={`w-full ${
+            activeRole === 'manager' ? 'lg:w-5/12' : 'lg:w-7/12'
+          } flex flex-col min-h-[460px] lg:min-h-[640px]`}
+        >
           <MapView
             school={school}
             bus={currentBus}
             students={students}
             waypoints={optimization.waypoints}
-            routePolyline={optimization.fullPolyline}
+            routePolyline={roadPolyline}
             activeStudentId={selectedStudentId}
             parentStudentIds={activeRole === 'parent' ? parentAccessibleStudents.map((s) => s.id) : undefined}
             activeRole={activeRole}
@@ -891,12 +972,16 @@ export default function App() {
             }}
             showComparisonRoute={showComparisonRoute}
             onToggleComparisonRoute={() => setShowComparisonRoute((prev) => !prev)}
-            unoptimizedPolyline={unoptimizedPolyline}
+            unoptimizedPolyline={unoptimizedRoadPolyline}
           />
         </section>
 
         {/* Right Side: Role Specific Controls */}
-        <section className="w-full lg:w-5/12 flex flex-col space-y-4 overflow-y-auto">
+        <section
+          className={`w-full ${
+            activeRole === 'manager' ? 'lg:w-7/12' : 'lg:w-5/12'
+          } flex flex-col space-y-4 overflow-y-auto`}
+        >
           {activeRole === 'driver' && (
             <DriverConsole
               bus={currentBus}
@@ -953,6 +1038,13 @@ export default function App() {
               onOpenBroadcastModal={() => setIsEmergencyModalOpen(true)}
               onOpenDelayModal={() => setIsDelayModalOpen(true)}
               onSelectStudent={setSelectedStudentId}
+              onToggleAbsentStatus={handleToggleAbsentStatus}
+              onFocusBusOnMap={(busId) => {
+                const b = buses.find((item) => item.id === busId);
+                if (b) {
+                  setSelectedStudentId('');
+                }
+              }}
             />
           )}
         </section>

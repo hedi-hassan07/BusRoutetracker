@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Persona Switcher Tabs: ONLY ADMIN CAN SWITCH BETWEEN ALL ROLES */}
         {currentUser?.role === 'manager' ? (
-          <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-amber-400/40 shadow-inner">
+          <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-amber-400/40 shadow-inner overflow-x-auto max-w-[190px] xs:max-w-[260px] sm:max-w-none flex-shrink-0">
             <span className="hidden xl:flex items-center gap-1 text-[11px] font-bold text-amber-300 px-2 py-0.5 bg-amber-400/10 rounded-lg border border-amber-400/20 ml-1">
               <ShieldAlert className="w-3 h-3 text-amber-400" />
               <span>ئەدمین (هەموو بەشەکان)</span>
@@ -101,40 +101,43 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="role-tab-manager"
               onClick={() => onRoleChange('manager')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                 activeRole === 'manager'
                   ? 'bg-amber-400 text-slate-950 shadow-md font-bold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
-              <SchoolIcon className="w-3.5 h-3.5" />
-              <span>کۆنتڕۆڵی قوتابخانە</span>
+              <SchoolIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="hidden xs:inline">کۆنتڕۆڵی قوتابخانە</span>
+              <span className="xs:hidden">قوتابخانە</span>
             </button>
 
             <button
               id="role-tab-driver"
               onClick={() => onRoleChange('driver')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                 activeRole === 'driver'
                   ? 'bg-amber-400 text-slate-950 shadow-md font-bold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
-              <BusIcon className="w-3.5 h-3.5" />
-              <span>داشبۆردی شۆفێر</span>
+              <BusIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="hidden xs:inline">داشبۆردی شۆفێر</span>
+              <span className="xs:hidden">شۆفێر</span>
             </button>
 
             <button
               id="role-tab-parent"
               onClick={() => onRoleChange('parent')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                 activeRole === 'parent'
                   ? 'bg-amber-400 text-slate-950 shadow-md font-bold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              <span>دەروازەی باوان</span>
+              <Users className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="hidden xs:inline">دەروازەی باوان</span>
+              <span className="xs:hidden">باوان</span>
             </button>
           </div>
         ) : currentUser?.role === 'parent' ? (

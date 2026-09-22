@@ -96,6 +96,31 @@ export interface Bus {
   delayReason?: string;
   emergencyActive: boolean;
   emergencyMessage?: string;
+  model?: string;
+  year?: number;
+  lastServiceDate?: string;
+  maintenanceStatus?: 'excellent' | 'good' | 'service_due';
+}
+
+export interface BusTripLog {
+  id: string;
+  date: string;
+  shift: TripShift;
+  busId: string;
+  busNumber: string;
+  driverName: string;
+  departureTime: string;
+  arrivalTime: string;
+  totalDurationMin: number;
+  totalDistanceKm: number;
+  averageSpeedKmh: number;
+  totalStudentsAssigned: number;
+  studentsPickedUp: number;
+  absentCount: number;
+  completionRatePercent: number;
+  dieselSavedLiters: number;
+  onTimeStatus: 'on_time' | 'minor_delay' | 'delayed';
+  notes?: string;
 }
 
 export interface StopWaypoint {
